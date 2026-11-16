@@ -81,3 +81,25 @@ def test_arjun_tier_change_applies_by_effective_date():
     points = gold.set_index("order_id")["loyalty_points"]
 
     assert points["ORD-1002"] == 70
+
+def test_deduplication_prefers_mobile_when_timestamps_tie():
+    records = pd.DataFrame([
+        {
+            "order_id": "ORD-TEST",
+            "amount": 100,
+            "updated_at": "2026-09-03T10:00:00",
+            "source": "website",
+        },
+        {
+            "order_id": "ORD-TEST",
+            "amount": 150,
+            "updated_at": "2026-09-03T10:00:00",
+            "source": "mobile",
+        },
+    ])
+
+    result = deduplicate_orders(records)
+
+    assert len(result) == 1
+    assert result.iloc[0]["source"] == "mobile"
+    assert result.iloc[0]["amount"] == 150
