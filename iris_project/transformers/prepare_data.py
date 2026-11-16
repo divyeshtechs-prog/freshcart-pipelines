@@ -2,7 +2,7 @@
 try:
     from mage_ai.data_preparation.decorators import transformer, test
 except ImportError:
-    # Allows local pytest execution outside the Mage container.
+    # Allow standalone execution and pytest outside Mage.
     def transformer(func):
         return func
 
@@ -18,10 +18,8 @@ from sklearn.model_selection import train_test_split
 @transformer
 def transform(data, *args, **kwargs):
     """
-    Prepare data for the Iris classification pipeline.
-
-    Supports both Mage dictionary input and the standalone
-    DataFrame input used by the CI test.
+    Split Iris data into training and testing sets.
+    Supports both Mage dictionary input and standalone DataFrame input.
     """
 
     # Standalone CI test compatibility
@@ -37,7 +35,6 @@ def transform(data, *args, **kwargs):
 
         result["split"] = "train"
         result.loc[test_indices, "split"] = "test"
-
         return result
 
     # Mage pipeline execution
@@ -64,7 +61,12 @@ def transform(data, *args, **kwargs):
 @test
 def test_output(output, *args) -> None:
     assert output is not None
-    assert len(output["X_train"]) == 120
-    assert len(output["X_test"]) == 30
-    assert len(output["y_train"]) == 120
-    assert len(output["y_test"]) == 30
+
+    if isinstance(output, pd.DataFrame):
+        assert len(output[output["split"] == "train"]) == 120
+        assert len(output[output["split"] == "test"]) == 30
+    else:
+        assert len(output["X_train"]) == 120
+        assert len(output["X_test"]) == 30
+        assert len(output["y_train"]) == 120
+        assert len(output["y_test"]) == 30
