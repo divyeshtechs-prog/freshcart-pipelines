@@ -30,7 +30,7 @@ def transform(data, *args, **kwargs):
 
         train_indices, test_indices = train_test_split(
             result.index,
-            test_size=0.2,
+            test_size=0.3,
             random_state=42,
             stratify=result["target"],
         )
