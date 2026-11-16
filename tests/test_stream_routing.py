@@ -1,5 +1,5 @@
 
-from stream.driver import DRIVERS
+from stream.routing_config import DRIVERS
 
 
 def topic_matches(pattern, routing_key):
