@@ -15,11 +15,6 @@ def transform(data, *args, **kwargs):
         max_depth=max_depth,
         random_state=42
     )
-    model = DecisionTreeClassifier(
-        max_depth=int(max_depth),
-        random_state=42
-    )
-
     model.fit(X_train, y_train)
     feature_names = data["feature_names"]
 

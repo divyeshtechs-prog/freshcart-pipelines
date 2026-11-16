@@ -20,7 +20,13 @@ def transform(data, *args, **kwargs):
 
 @test
 def test_output(output, *args) -> None:
-    assert isinstance(output, dict)
-    assert "feature" in output
-    assert "importance" in output
-    assert 0 <= output["importance"] <= 1
+    assert isinstance(output, list)
+    assert len(output) == 4
+
+    for item in output:
+        assert isinstance(item, dict)
+        assert "feature" in item
+        assert "importance" in item
+        assert 0 <= item["importance"] <= 1
+
+    assert abs(sum(item["importance"] for item in output) - 1.0) < 1e-6

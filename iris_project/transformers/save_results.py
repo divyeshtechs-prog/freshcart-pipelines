@@ -5,7 +5,6 @@ from datetime import datetime
 
 
 @transformer
-@transformer
 def transform(data, data_2, *args, **kwargs):
 
     # Evaluation metrics
