@@ -1,86 +1,91 @@
 
 import json
+import sys
 import pika
 
 RABBITMQ_HOST = "localhost"
-
-DRIVERS = {
-    "ravi": "bangalore.koramangala.*",
-    "priya": "bangalore.indiranagar.*",
-    "arjun": "bangalore.*.ride",
-    "meena": "bangalore.*.food",
-    "karthik": "chennai.tnagar.food",
-    "control": "bangalore.#",
-}
+EXCHANGE = "rapido-dispatch"
 
 
 def main():
+    if len(sys.argv) != 3:
+        print('Usage: python driver.py NAME "ROUTING_PATTERN"')
+        sys.exit(1)
+
+    name = sys.argv[1]
+    routing_pattern = sys.argv[2]
+
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host=RABBITMQ_HOST)
     )
     channel = connection.channel()
 
     channel.exchange_declare(
-        exchange="rapido-dispatch",
+        exchange=EXCHANGE,
         exchange_type="topic",
-        durable=True
+        durable=True,
     )
 
-    for queue, routing_pattern in DRIVERS.items():
-        channel.queue_declare(queue=queue, durable=True)
-        channel.queue_bind(
-            exchange="rapido-dispatch",
-            queue=queue,
-            routing_key=routing_pattern
-        )
+    # Exclusive, auto-delete queue: private to this driver process.
+    result = channel.queue_declare(
+        queue="",
+        exclusive=True,
+        auto_delete=True,
+    )
+    queue_name = result.method.queue
 
-    def make_callback(queue_name):
-        def callback(ch, method, properties, body):
-            try:
-                event = json.loads(body)
+    channel.queue_bind(
+        exchange=EXCHANGE,
+        queue=queue_name,
+        routing_key=routing_pattern,
+    )
 
-                if not event.get("zone"):
-                    print(f"[{queue_name.upper()}] Rejected: Missing zone")
-                    ch.basic_nack(
-                        delivery_tag=method.delivery_tag,
-                        requeue=False
-                    )
-                    return
+    def callback(ch, method, properties, body):
+        try:
+            event = json.loads(body)
 
-                print(
-                    f"[{queue_name.upper()}] Received: "
-                    f"{event['routing_key']} | "
-                    f"Zone: {event['zone']} | "
-                    f"Event ID: {event['event_id']}"
-                )
-
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-
-            except (json.JSONDecodeError, KeyError) as error:
-                print(f"[{queue_name.upper()}] Invalid message: {error}")
+            if not event.get("zone"):
+                print(f"[{name}] Rejected: Missing zone")
                 ch.basic_nack(
                     delivery_tag=method.delivery_tag,
-                    requeue=False
+                    requeue=False,
                 )
+                return
 
-        return callback
+            print(
+                f"[{name}] Received: "
+                f"{event['city']}.{event['zone']}.{event['type']} | "
+                f"Event ID: {event['id']} | "
+                f"Timestamp: {event['ts']}"
+            )
 
-    # Register all consumers before starting consumption.
-    for queue in DRIVERS:
-        channel.basic_consume(
-            queue=queue,
-            on_message_callback=make_callback(queue),
-            auto_ack=False
-        )
+            ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    print("Driver consumers started. Press CTRL+C to stop.")
+        except (json.JSONDecodeError, KeyError, TypeError) as error:
+            print(f"[{name}] Invalid message: {error}")
+            ch.basic_nack(
+                delivery_tag=method.delivery_tag,
+                requeue=False,
+            )
+
+    channel.basic_consume(
+        queue=queue_name,
+        on_message_callback=callback,
+        auto_ack=False,
+    )
+
+    print(f"Driver: {name}")
+    print(f"Routing pattern: {routing_pattern}")
+    print(f"Private queue: {queue_name}")
+    print("Listening for events. Press CTRL+C to stop.")
 
     try:
         channel.start_consuming()
     except KeyboardInterrupt:
-        print("\nConsumers stopped.")
+        print(f"\nDriver {name} stopped.")
     finally:
-        connection.close()
+        if connection.is_open:
+            connection.close()
 
 
 if __name__ == "__main__":

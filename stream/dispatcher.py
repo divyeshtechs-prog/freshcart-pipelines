@@ -1,6 +1,6 @@
 
-import itertools
 import json
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -11,16 +11,33 @@ RABBITMQ_HOST = "localhost"
 EXCHANGE = "rapido-dispatch"
 PUBLISH_INTERVAL = 2
 
-# Routing key, event type, and zone
-events = [
-    ("bangalore.koramangala.food", "food", "koramangala"),
-    ("bangalore.indiranagar.ride", "ride", "indiranagar"),
-    ("bangalore.whitefield.ride", "ride", "whitefield"),
-    ("chennai.tnagar.food", "food", "tnagar"),
-    ("chennai.whitefield.ride", "ride", "whitefield"),
-    ("bangalore.koramangala", "unknown", None),
-]
+CITIES = {
+    "bangalore": ["koramangala", "indiranagar", "whitefield"],
+    "chennai": ["tnagar", "whitefield"],
+}
 
+EVENT_TYPES = ["ride", "food"]
+
+
+def generate_event(count):
+    city = random.choice(list(CITIES.keys()))
+    zone = random.choice(CITIES[city])
+    event_type = random.choice(EVENT_TYPES)
+
+    # Keep a valid routing key, but omit zone from the payload every 10th event.
+    routing_key = f"{city}.{zone}.{event_type}"
+
+    event_zone = None if count % 10 == 0 else zone
+
+    event = {
+        "id": str(uuid.uuid4()),
+        "city": city,
+        "zone": event_zone,
+        "type": event_type,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return routing_key, event
 
 def main():
     connection = pika.BlockingConnection(
@@ -31,24 +48,16 @@ def main():
     channel.exchange_declare(
         exchange=EXCHANGE,
         exchange_type="topic",
-        durable=True
+        durable=True,
     )
 
-    event_cycle = itertools.cycle(events)
-
+    count = 0
     print("Rapido dispatcher started. Publishing every 2 seconds.")
 
     try:
         while True:
-            routing_key, event_type, zone = next(event_cycle)
-
-            event = {
-                "event_id": str(uuid.uuid4()),
-                "event_type": event_type,
-                "routing_key": routing_key,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "zone": zone,
-            }
+            count += 1
+            routing_key, event = generate_event(count)
 
             channel.basic_publish(
                 exchange=EXCHANGE,
@@ -56,14 +65,14 @@ def main():
                 body=json.dumps(event),
                 properties=pika.BasicProperties(
                     delivery_mode=2,
-                    content_type="application/json"
-                )
+                    content_type="application/json",
+                ),
             )
 
             print(
                 f"Published: {routing_key} | "
-                f"Zone: {zone} | "
-                f"Event ID: {event['event_id']}"
+                f"Event ID: {event['id']} | "
+                f"Zone: {event['zone']}"
             )
 
             time.sleep(PUBLISH_INTERVAL)
